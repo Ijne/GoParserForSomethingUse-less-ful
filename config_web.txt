@@ -14,6 +14,12 @@ database_config := begin
   pool_size := 10;
 end;
 
+-- Some comments
+
+=begin
+  smth cool
+=cut
+
 features := begin
   caching := true;
   compression := false;

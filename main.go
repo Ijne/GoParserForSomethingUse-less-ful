@@ -48,72 +48,86 @@ type Value interface{}
 func lex(input string) ([]Token, error) {
 	var tokens []Token
 	lines := strings.Split(input, "\n")
+	inMultilineComment := false
+
+	// Компилируем регулярные выражения ОДИН РАЗ
+	scientificNotationRegex := regexp.MustCompile(`^[+-]?\d+\.?\d*[eE][+-]?\d+`)
 
 	for lineNum, line := range lines {
-		lineNum++
+		lineNum++ // 1-based line numbers
+		originalLine := line
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "--") {
+
+		// Обработка МНОГОСТРОЧНЫХ комментариев
+		if strings.HasPrefix(line, "=begin") {
+			inMultilineComment = true
 			continue
 		}
-		if strings.HasPrefix(line, "=begin") {
-			for i := lineNum; i < len(lines); i++ {
-				if strings.TrimSpace(lines[i-1]) == "=cut" {
-					break
-				}
+		if inMultilineComment {
+			if line == "=cut" {
+				inMultilineComment = false
 			}
 			continue
 		}
 
+		// Пропускаем пустые строки и ОДНОСТРОЧНЫЕ комментарии
+		if line == "" || strings.HasPrefix(line, "--") {
+			continue
+		}
+
+		// Работаем с оригинальной строкой (без trim) для правильных позиций
 		pos := 0
-		for pos < len(line) {
-			if unicode.IsSpace(rune(line[pos])) {
+		for pos < len(originalLine) {
+			if unicode.IsSpace(rune(originalLine[pos])) {
 				pos++
 				continue
 			}
 
-			if strings.HasPrefix(line[pos:], "--") {
-				break
-			}
-
-			if line[pos] == '\'' {
-				end := strings.Index(line[pos+1:], "'")
+			// Strings
+			if originalLine[pos] == '\'' {
+				end := strings.Index(originalLine[pos+1:], "'")
 				if end == -1 {
 					return nil, fmt.Errorf("unclosed string at line %d", lineNum)
 				}
-				tokens = append(tokens, Token{TOKEN_STRING, line[pos+1 : pos+1+end], lineNum, pos})
+				tokens = append(tokens, Token{TOKEN_STRING, originalLine[pos+1 : pos+1+end], lineNum, pos})
 				pos += end + 2
 				continue
 			}
 
-			if match, _ := regexp.MatchString(`^[+-]?\d+\.?\d*[eE][+-]?\d+`, line[pos:]); match {
+			// Numbers (scientific notation)
+			if scientificNotationRegex.MatchString(originalLine[pos:]) {
 				num := ""
 				start := pos
-				for pos < len(line) && (unicode.IsDigit(rune(line[pos])) || line[pos] == '.' ||
-					line[pos] == 'e' || line[pos] == 'E' || line[pos] == '+' || line[pos] == '-') {
-					num += string(line[pos])
+				for pos < len(originalLine) && (unicode.IsDigit(rune(originalLine[pos])) || originalLine[pos] == '.' ||
+					originalLine[pos] == 'e' || originalLine[pos] == 'E' || originalLine[pos] == '+' || originalLine[pos] == '-') {
+					num += string(originalLine[pos])
 					pos++
 				}
 				tokens = append(tokens, Token{TOKEN_NUMBER, num, lineNum, start})
 				continue
 			}
 
-			if unicode.IsDigit(rune(line[pos])) ||
-				((line[pos] == '-' || line[pos] == '+') && pos+1 < len(line) && unicode.IsDigit(rune(line[pos+1]))) {
+			// Regular numbers
+			if unicode.IsDigit(rune(originalLine[pos])) ||
+				((originalLine[pos] == '-' || originalLine[pos] == '+') && pos+1 < len(originalLine) && unicode.IsDigit(rune(originalLine[pos+1]))) {
 				num := ""
 				start := pos
-				if line[pos] == '-' || line[pos] == '+' {
-					num += string(line[pos])
+				// Handle sign
+				if originalLine[pos] == '-' || originalLine[pos] == '+' {
+					num += string(originalLine[pos])
 					pos++
 				}
-				for pos < len(line) && unicode.IsDigit(rune(line[pos])) {
-					num += string(line[pos])
+				// Integer part
+				for pos < len(originalLine) && unicode.IsDigit(rune(originalLine[pos])) {
+					num += string(originalLine[pos])
 					pos++
 				}
-				if pos < len(line) && line[pos] == '.' {
-					num += string(line[pos])
+				// Decimal part
+				if pos < len(originalLine) && originalLine[pos] == '.' {
+					num += string(originalLine[pos])
 					pos++
-					for pos < len(line) && unicode.IsDigit(rune(line[pos])) {
-						num += string(line[pos])
+					for pos < len(originalLine) && unicode.IsDigit(rune(originalLine[pos])) {
+						num += string(originalLine[pos])
 						pos++
 					}
 				}
@@ -121,11 +135,12 @@ func lex(input string) ([]Token, error) {
 				continue
 			}
 
-			if unicode.IsLetter(rune(line[pos])) || line[pos] == '_' {
+			// Identifiers and keywords (including underscore)
+			if unicode.IsLetter(rune(originalLine[pos])) || originalLine[pos] == '_' {
 				ident := ""
 				start := pos
-				for pos < len(line) && (unicode.IsLetter(rune(line[pos])) || unicode.IsDigit(rune(line[pos])) || line[pos] == '_') {
-					ident += string(line[pos])
+				for pos < len(originalLine) && (unicode.IsLetter(rune(originalLine[pos])) || unicode.IsDigit(rune(originalLine[pos])) || originalLine[pos] == '_') {
+					ident += string(originalLine[pos])
 					pos++
 				}
 
@@ -142,7 +157,8 @@ func lex(input string) ([]Token, error) {
 				continue
 			}
 
-			switch line[pos] {
+			// Single character tokens
+			switch originalLine[pos] {
 			case '(':
 				tokens = append(tokens, Token{TOKEN_LPAREN, "(", lineNum, pos})
 			case ')':
@@ -154,7 +170,7 @@ func lex(input string) ([]Token, error) {
 			case ';':
 				tokens = append(tokens, Token{TOKEN_SEMICOLON, ";", lineNum, pos})
 			case ':':
-				if pos+1 < len(line) && line[pos+1] == '=' {
+				if pos+1 < len(originalLine) && originalLine[pos+1] == '=' {
 					tokens = append(tokens, Token{TOKEN_ASSIGN, ":=", lineNum, pos})
 					pos++
 				} else {
@@ -168,8 +184,17 @@ func lex(input string) ([]Token, error) {
 				tokens = append(tokens, Token{TOKEN_PLUS, "+", lineNum, pos})
 			case '*':
 				tokens = append(tokens, Token{TOKEN_STAR, "*", lineNum, pos})
+			case '=':
+				// Обрабатываем =cut который мог остаться после многострочного комментария
+				if strings.HasPrefix(originalLine[pos:], "=cut") {
+					// Это должно было быть обработано выше, но на всякий случай пропускаем
+					pos += 4
+					continue
+				} else {
+					return nil, fmt.Errorf("unexpected character '=' at line %d, position %d", lineNum, pos)
+				}
 			default:
-				return nil, fmt.Errorf("unexpected character '%c' at line %d, position %d", line[pos], lineNum, pos)
+				return nil, fmt.Errorf("unexpected character '%c' at line %d, position %d", originalLine[pos], lineNum, pos)
 			}
 			pos++
 		}
