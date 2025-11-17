@@ -43,7 +43,7 @@ func TestArray(t *testing.T) {
 
 	arr, ok := result["items"].([]Value)
 	if !ok || len(arr) != 3 {
-		t.Errorf("Expected array of 3 elements, got %v", result["items"])
+		t.Errorf("Expected 3 elements, got %v", result["items"])
 	}
 }
 
@@ -54,11 +54,11 @@ func TestDictionary(t *testing.T) {
 	result, err := parser.parse()
 
 	if err != nil {
-		t.Fatalf("Dictionary parsing error: %v", err)
+		t.Fatalf("Dict parsing error: %v", err)
 	}
 
 	dict, ok := result["config"].(map[string]Value)
 	if !ok || dict["key"] != "value" {
-		t.Errorf("Expected dictionary with key='value', got %v", result["config"])
+		t.Errorf("Expected key='value', got %v", result["config"])
 	}
 }
