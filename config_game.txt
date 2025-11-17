@@ -1,0 +1,33 @@
+-- Конфигурация игрового движка
+(define base_speed 50);
+(define max_level 10);
+
+game_title := 'Space Adventure';
+version := '1.0.0';
+
+player := begin
+  health := 100;
+  speed := ![base_speed * 2];
+  inventory := #( 'sword' 'potion' 'map' );
+  stats := begin
+    strength := 15;
+    agility := 12;
+    intelligence := 8;
+  end;
+end;
+
+enemies := #(
+  begin
+    type := 'goblin';
+    health := 30;
+    damage := 5;
+  end
+  begin  
+    type := 'dragon';
+    health := 200;
+    damage := 25;
+  end
+);
+
+levels := #( 1 2 3 4 5 );
+difficulty_multipliers := #( 1.0 1.5 2.0 2.5 3.0 );
