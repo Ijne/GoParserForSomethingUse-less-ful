@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -28,6 +29,9 @@ const (
 	TOKEN_END
 	TOKEN_PLUS
 	TOKEN_STAR
+	TOKEN_COMMA
+	TOKEN_SORT
+	TOKEN_MAX
 )
 
 type Token struct {
@@ -140,6 +144,10 @@ func lex(input string) ([]Token, error) {
 					tokens = append(tokens, Token{TOKEN_BEGIN, ident, lineNum, start})
 				case "end":
 					tokens = append(tokens, Token{TOKEN_END, ident, lineNum, start})
+				case "sort":
+					tokens = append(tokens, Token{TOKEN_SORT, ident, lineNum, start})
+				case "max":
+					tokens = append(tokens, Token{TOKEN_MAX, ident, lineNum, start})
 				default:
 					tokens = append(tokens, Token{TOKEN_IDENT, ident, lineNum, start})
 				}
@@ -172,6 +180,8 @@ func lex(input string) ([]Token, error) {
 				tokens = append(tokens, Token{TOKEN_PLUS, "+", lineNum, pos})
 			case '*':
 				tokens = append(tokens, Token{TOKEN_STAR, "*", lineNum, pos})
+			case ',':
+				tokens = append(tokens, Token{TOKEN_COMMA, ",", lineNum, pos})
 			case '=':
 				if strings.HasPrefix(originalLine[pos:], "=cut") {
 					pos += 4
@@ -324,6 +334,17 @@ func (p *Parser) parseConstantExpression() (Value, error) {
 		return nil, err
 	}
 
+	if p.current().Type == TOKEN_SORT || p.current().Type == TOKEN_MAX {
+		result, err := p.parseFunctionCall()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.expect(TOKEN_RBRACKET); err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+
 	left, err := p.parseValue()
 	if err != nil {
 		return nil, err
@@ -382,6 +403,148 @@ func (p *Parser) parseConstantExpression() (Value, error) {
 	}
 
 	return left, nil
+}
+
+func (p *Parser) parseFunctionCall() (Value, error) {
+	switch p.current().Type {
+	case TOKEN_SORT:
+		return p.parseSortFunction()
+	case TOKEN_MAX:
+		return p.parseMaxFunction()
+	default:
+		return nil, fmt.Errorf("unknown function at line %d", p.current().Line)
+	}
+}
+
+func (p *Parser) parseSortFunction() (Value, error) {
+	if err := p.expect(TOKEN_SORT); err != nil {
+		return nil, err
+	}
+	if err := p.expect(TOKEN_LPAREN); err != nil {
+		return nil, err
+	}
+
+	arrayValue, err := p.parseValue()
+	if err != nil {
+		return nil, err
+	}
+
+	array, ok := arrayValue.([]Value)
+	if !ok {
+		return nil, fmt.Errorf("sort() expects an array, got %T at line %d", arrayValue, p.current().Line)
+	}
+
+	if err := p.expect(TOKEN_RPAREN); err != nil {
+		return nil, err
+	}
+
+	return sortArray(array)
+}
+
+func (p *Parser) parseMaxFunction() (Value, error) {
+	if err := p.expect(TOKEN_MAX); err != nil {
+		return nil, err
+	}
+	if err := p.expect(TOKEN_LPAREN); err != nil {
+		return nil, err
+	}
+
+	var args []Value
+
+	arg, err := p.parseValue()
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, arg)
+
+	for p.current().Type == TOKEN_COMMA {
+		p.advance()
+
+		arg, err := p.parseValue()
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, arg)
+	}
+
+	if err := p.expect(TOKEN_RPAREN); err != nil {
+		return nil, err
+	}
+
+	return findMax(args)
+}
+
+func sortArray(array []Value) ([]Value, error) {
+	if len(array) == 0 {
+		return array, nil
+	}
+
+	switch array[0].(type) {
+	case int:
+		sort.Slice(array, func(i, j int) bool {
+			return array[i].(int) < array[j].(int)
+		})
+	case float64:
+		sort.Slice(array, func(i, j int) bool {
+			return array[i].(float64) < array[j].(float64)
+		})
+	case string:
+		sort.Slice(array, func(i, j int) bool {
+			return array[i].(string) < array[j].(string)
+		})
+	default:
+		return nil, fmt.Errorf("unsupported type for sorting: %T", array[0])
+	}
+
+	return array, nil
+}
+
+func findMax(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return nil, fmt.Errorf("max() requires at least one argument")
+	}
+
+	maxValue := args[0]
+
+	for i := 1; i < len(args); i++ {
+		switch v1 := maxValue.(type) {
+		case int:
+			if v2, ok := args[i].(int); ok {
+				if v2 > v1 {
+					maxValue = v2
+				}
+			} else if v2, ok := args[i].(float64); ok {
+				if v2 > float64(v1) {
+					maxValue = v2
+				}
+			} else {
+				return nil, fmt.Errorf("incompatible types in max()")
+			}
+		case float64:
+			var v2 float64
+			switch val := args[i].(type) {
+			case float64:
+				v2 = val
+			case int:
+				v2 = float64(val)
+			default:
+				return nil, fmt.Errorf("incompatible types in max()")
+			}
+			if v2 > v1 {
+				maxValue = v2
+			}
+		case string:
+			if v2, ok := args[i].(string); ok {
+				if v2 > v1 {
+					maxValue = v2
+				}
+			} else {
+				return nil, fmt.Errorf("incompatible types in max()")
+			}
+		}
+	}
+
+	return maxValue, nil
 }
 
 func (p *Parser) parseDefine() error {
