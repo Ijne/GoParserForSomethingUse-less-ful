@@ -50,15 +50,13 @@ func lex(input string) ([]Token, error) {
 	lines := strings.Split(input, "\n")
 	inMultilineComment := false
 
-	// Компилируем регулярные выражения ОДИН РАЗ
 	scientificNotationRegex := regexp.MustCompile(`^[+-]?\d+\.?\d*[eE][+-]?\d+`)
 
 	for lineNum, line := range lines {
-		lineNum++ // 1-based line numbers
+		lineNum++
 		originalLine := line
 		line = strings.TrimSpace(line)
 
-		// Обработка МНОГОСТРОЧНЫХ комментариев
 		if strings.HasPrefix(line, "=begin") {
 			inMultilineComment = true
 			continue
@@ -70,12 +68,10 @@ func lex(input string) ([]Token, error) {
 			continue
 		}
 
-		// Пропускаем пустые строки и ОДНОСТРОЧНЫЕ комментарии
 		if line == "" || strings.HasPrefix(line, "--") {
 			continue
 		}
 
-		// Работаем с оригинальной строкой (без trim) для правильных позиций
 		pos := 0
 		for pos < len(originalLine) {
 			if unicode.IsSpace(rune(originalLine[pos])) {
@@ -83,7 +79,6 @@ func lex(input string) ([]Token, error) {
 				continue
 			}
 
-			// Strings
 			if originalLine[pos] == '\'' {
 				end := strings.Index(originalLine[pos+1:], "'")
 				if end == -1 {
@@ -94,7 +89,6 @@ func lex(input string) ([]Token, error) {
 				continue
 			}
 
-			// Numbers (scientific notation)
 			if scientificNotationRegex.MatchString(originalLine[pos:]) {
 				num := ""
 				start := pos
@@ -107,22 +101,18 @@ func lex(input string) ([]Token, error) {
 				continue
 			}
 
-			// Regular numbers
 			if unicode.IsDigit(rune(originalLine[pos])) ||
 				((originalLine[pos] == '-' || originalLine[pos] == '+') && pos+1 < len(originalLine) && unicode.IsDigit(rune(originalLine[pos+1]))) {
 				num := ""
 				start := pos
-				// Handle sign
 				if originalLine[pos] == '-' || originalLine[pos] == '+' {
 					num += string(originalLine[pos])
 					pos++
 				}
-				// Integer part
 				for pos < len(originalLine) && unicode.IsDigit(rune(originalLine[pos])) {
 					num += string(originalLine[pos])
 					pos++
 				}
-				// Decimal part
 				if pos < len(originalLine) && originalLine[pos] == '.' {
 					num += string(originalLine[pos])
 					pos++
@@ -135,7 +125,6 @@ func lex(input string) ([]Token, error) {
 				continue
 			}
 
-			// Identifiers and keywords (including underscore)
 			if unicode.IsLetter(rune(originalLine[pos])) || originalLine[pos] == '_' {
 				ident := ""
 				start := pos
@@ -157,7 +146,6 @@ func lex(input string) ([]Token, error) {
 				continue
 			}
 
-			// Single character tokens
 			switch originalLine[pos] {
 			case '(':
 				tokens = append(tokens, Token{TOKEN_LPAREN, "(", lineNum, pos})
@@ -185,9 +173,7 @@ func lex(input string) ([]Token, error) {
 			case '*':
 				tokens = append(tokens, Token{TOKEN_STAR, "*", lineNum, pos})
 			case '=':
-				// Обрабатываем =cut который мог остаться после многострочного комментария
 				if strings.HasPrefix(originalLine[pos:], "=cut") {
-					// Это должно было быть обработано выше, но на всякий случай пропускаем
 					pos += 4
 					continue
 				} else {

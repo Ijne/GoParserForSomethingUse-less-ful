@@ -1,4 +1,3 @@
--- Конфигурация игрового движка
 (define base_speed 50);
 (define max_level 10);
 
